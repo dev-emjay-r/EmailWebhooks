@@ -1,0 +1,1 @@
+sc create MyWebhookService binPath= "C:\Apps\Webhooks\Webhooks.exe" start= auto
