@@ -23,6 +23,12 @@ public class WebhooksController : ControllerBase
         _db = db;
     }
 
+    [HttpGet("ses")]
+    public IActionResult StatusSes()
+    {
+        return Ok("SES Webhook is working");
+    }
+
     [HttpPost("ses")]
     public async Task<IActionResult> HandleSes()
     {
