@@ -16,6 +16,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>options.UseSqlite($"Data S
 
 builder.Services.AddHttpClient();
 builder.Services.AddControllers();
+builder.Host.UseWindowsService();
+builder.WebHost.UseUrls("http://0.0.0.0:5000");
 var app = builder.Build();
 
 // Ensure database is created

@@ -23,6 +23,65 @@ public class WebhooksController : ControllerBase
         _db = db;
     }
 
+
+
+    [HttpPost("mailpit")]
+    public async Task<IActionResult> HandleMailpit()
+    {
+        using var reader = new StreamReader(Request.Body);
+        var body = await reader.ReadToEndAsync();
+        // _logger.LogInformation("Mailpit event: {Payload}", body);
+
+
+        // Check if the body is a valid JSON
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+
+            List<MailpitDeliveryEvent> mailpitEvents;
+            if (document.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                mailpitEvents = MailpitDeliveryEvent.FromJsonArray(body);
+            }
+            else
+            {
+                var mailpitEvent = MailpitDeliveryEvent.FromJson(body);
+                mailpitEvents = mailpitEvent is null
+                    ? new()
+                    : new() { mailpitEvent };
+            }
+
+            foreach (var mailpitEvent in mailpitEvents)
+            {
+                _logger.LogInformation(
+                    "Mailpit event {EventId}: {EventType} for {Email}",
+                    mailpitEvent.SgEventId,
+                    mailpitEvent.Event,
+                    mailpitEvent.Email);
+
+                _ = _db.DeliveryEvents.Add(new DeliveryEvents
+                {
+                    delivery_provider_event_id = mailpitEvent.SgEventId,
+                    delivery_message_id = mailpitEvent.SmtpId,
+                    delivery_event_type = mailpitEvent.Event[0].ToString().ToUpper() + mailpitEvent.Event[1..], // capitalize first letter
+                    delivery_detail = $"Pool: {mailpitEvent.Pool.Name}",
+                    delivery_received_utc = mailpitEvent.TimestampUtc.UtcDateTime,
+                    delivery_processed = false
+                });
+            }
+
+            await _db.SaveChangesAsync();
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning("Parse Invalid JSON received from Mailpit: {Payload}, Error: {Error}", body, ex.Message);
+            return BadRequest("Invalid JSON");
+        }
+        
+
+        return Ok();
+    }
+
     [HttpGet("ses")]
     public IActionResult StatusSes()
     {
@@ -99,12 +158,12 @@ public class WebhooksController : ControllerBase
             mail.TryGetProperty("messageId", out var eventID);
             _ = _db.DeliveryEvents.Add(new DeliveryEvents
             {
-                ProviderEventId = sesModel?.Mail.MessageId ?? "",//eventID.GetString(), // Message ID from AWS 
-                MessageId = targetId ?? "",
-                EventType = sesModel?.EventType ?? "",
-                Detail = sesModel?.Delivery.SmtpResponse,
-                ReceivedUtc = sesModel?.Delivery.Timestamp.UtcDateTime ?? DateTime.UtcNow,
-                Processed = false
+                delivery_provider_event_id = sesModel?.Mail.MessageId ?? "",//eventID.GetString(), // Message ID from AWS 
+                delivery_message_id = targetId ?? "",
+                delivery_event_type = sesModel?.EventType ?? "",
+                delivery_detail = sesModel?.Delivery.SmtpResponse,
+                delivery_received_utc = sesModel?.Delivery.Timestamp.UtcDateTime ?? DateTime.UtcNow,
+                delivery_processed = false
             });
         }
         else
